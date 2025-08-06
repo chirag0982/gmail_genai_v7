@@ -1,0 +1,58 @@
+modules = ["python-3.11", "postgresql-16"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["bash", "iana-etc", "libxcrypt"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Hello World"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "hello_world_test"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "AI Email Assistant"
+
+[[workflows.workflow]]
+name = "Hello World"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python hello_world.py"
+
+[[workflows.workflow]]
+name = "hello_world_test"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python hello_world.py"
+
+[[workflows.workflow]]
+name = "AI Email Assistant"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python hybrid_main.py"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
