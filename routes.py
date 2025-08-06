@@ -184,6 +184,41 @@ def generate_reply():
         if result.get('success'):
             session['last_ai_model_used'] = result.get('model_used')
             session['last_generation_time_ms'] = result.get('generation_time_ms', 2500)
+            
+            # Log token usage for analytics
+            try:
+                from ai_service import log_token_usage
+                user_team_id = None
+                
+                # Get user's current team for token tracking
+                if hasattr(current_user, 'teams') and current_user.teams:
+                    user_team_id = current_user.teams[0].id  # Use first team or could be selected team
+                elif hasattr(current_user, 'id'):
+                    # Create a personal team record for solo users
+                    user_team_id = f"personal_{current_user.id}"
+                
+                if user_team_id:
+                    tokens_used = result.get('tokens_used', 0)
+                    if tokens_used == 0:
+                        # Estimate tokens based on content length (rough approximation: 1 token ≈ 4 characters)
+                        total_chars = len(original_email) + len(context) + len(custom_instructions) + len(result.get('reply', ''))
+                        tokens_used = max(int(total_chars / 4), 100)  # Minimum 100 tokens
+                    
+                    log_token_usage(
+                        team_id=user_team_id,
+                        user_id=current_user.id,
+                        ai_model=result.get('model_used', model),
+                        operation_type='email_generation',
+                        tokens_consumed=tokens_used,
+                        cost_usd=tokens_used * 0.00002,  # Rough cost estimate
+                        generation_time_ms=result.get('generation_time_ms', 2500),
+                        quality_score=8.5,  # Default good quality
+                        prompt_length=len(original_email) + len(context),
+                        response_length=len(result.get('reply', ''))
+                    )
+                    logging.info(f"Token usage logged: {tokens_used} tokens for email generation")
+            except Exception as e:
+                logging.warning(f"Failed to log token usage: {str(e)}")
 
         return jsonify(result)
 
@@ -1002,6 +1037,41 @@ def _summarize_email_internal():
             summary_content = summary_response.get('content', '').strip()
             model_used = summary_response.get('model_used', 'AI')
             
+            # Log token usage for summarization
+            try:
+                from ai_service import log_token_usage
+                user_team_id = None
+                
+                # Get user's current team for token tracking
+                if hasattr(current_user, 'teams') and current_user.teams:
+                    user_team_id = current_user.teams[0].id  # Use first team
+                elif hasattr(current_user, 'id') and current_user.id != "test_user":
+                    user_team_id = f"personal_{current_user.id}"
+                elif user_id != "test_user":
+                    user_team_id = f"personal_{user_id}"
+                
+                if user_team_id:
+                    tokens_used = summary_response.get('tokens_used', 0)
+                    if tokens_used == 0:
+                        # Estimate tokens for summarization
+                        tokens_used = max(int(len(email_content) / 4 + len(summary_content) / 4), 50)
+                    
+                    log_token_usage(
+                        team_id=user_team_id,
+                        user_id=user_id,
+                        ai_model=model_used,
+                        operation_type='email_summarization',
+                        tokens_consumed=tokens_used,
+                        cost_usd=tokens_used * 0.00002,
+                        generation_time_ms=processing_time,
+                        quality_score=8.0,
+                        prompt_length=len(email_content),
+                        response_length=len(summary_content)
+                    )
+                    logging.info(f"Token usage logged: {tokens_used} tokens for email summarization")
+            except Exception as e:
+                logging.warning(f"Failed to log token usage for summarization: {str(e)}")
+            
             return jsonify({
                 'success': True,
                 'summary': summary_content,
@@ -1346,6 +1416,40 @@ def analyze_sentiment():
             return jsonify({'success': False, 'error': 'Email content is required'}), 400
 
         result = ai_service.analyze_email_with_langchain(email_content)
+        
+        # Log token usage for sentiment analysis
+        if result.get('success'):
+            try:
+                from ai_service import log_token_usage
+                user_team_id = None
+                
+                # Get user's current team for token tracking
+                if hasattr(current_user, 'teams') and current_user.teams:
+                    user_team_id = current_user.teams[0].id
+                elif hasattr(current_user, 'id'):
+                    user_team_id = f"personal_{current_user.id}"
+                
+                if user_team_id:
+                    tokens_used = result.get('tokens_used', 0)
+                    if tokens_used == 0:
+                        tokens_used = max(int(len(email_content) / 4), 30)  # Minimum 30 tokens
+                    
+                    log_token_usage(
+                        team_id=user_team_id,
+                        user_id=current_user.id,
+                        ai_model=result.get('model_used', 'claude-4-sonnet'),
+                        operation_type='sentiment_analysis',
+                        tokens_consumed=tokens_used,
+                        cost_usd=tokens_used * 0.00002,
+                        generation_time_ms=result.get('processing_time_ms', 1000),
+                        quality_score=7.5,
+                        prompt_length=len(email_content),
+                        response_length=100
+                    )
+                    logging.info(f"Token usage logged: {tokens_used} tokens for sentiment analysis")
+            except Exception as e:
+                logging.warning(f"Failed to log token usage for sentiment analysis: {str(e)}")
+        
         return jsonify(result)
 
     except Exception as e:
@@ -1364,6 +1468,42 @@ def suggest_improvements():
             return jsonify({'success': False, 'error': 'Email content is required'}), 400
 
         result = ai_service.suggest_email_improvements(email_content)
+        
+        # Log token usage for email suggestions
+        if result.get('success'):
+            try:
+                from ai_service import log_token_usage
+                user_team_id = None
+                
+                # Get user's current team for token tracking
+                if hasattr(current_user, 'teams') and current_user.teams:
+                    user_team_id = current_user.teams[0].id
+                elif hasattr(current_user, 'id'):
+                    user_team_id = f"personal_{current_user.id}"
+                
+                if user_team_id:
+                    tokens_used = result.get('tokens_used', 0)
+                    if tokens_used == 0:
+                        # Estimate tokens based on suggestions complexity
+                        suggestions_count = len(result.get('suggestions', []))
+                        tokens_used = max(int(len(email_content) / 4 + suggestions_count * 20), 80)
+                    
+                    log_token_usage(
+                        team_id=user_team_id,
+                        user_id=current_user.id,
+                        ai_model=result.get('model_used', 'qwen-4-turbo'),
+                        operation_type='email_suggestions',
+                        tokens_consumed=tokens_used,
+                        cost_usd=tokens_used * 0.00002,
+                        generation_time_ms=result.get('analysis_metrics', {}).get('total_analysis_time_ms', 1500),
+                        quality_score=8.0,
+                        prompt_length=len(email_content),
+                        response_length=len(str(result.get('suggestions', [])))
+                    )
+                    logging.info(f"Token usage logged: {tokens_used} tokens for email suggestions")
+            except Exception as e:
+                logging.warning(f"Failed to log token usage for suggestions: {str(e)}")
+        
         return jsonify(result)
 
     except Exception as e:
@@ -1496,11 +1636,51 @@ def generate_template():
             custom_instructions=custom_instructions
         )
 
+        # Log token usage for template generation
+        if result.get('success'):
+            try:
+                from ai_service import log_token_usage
+                user_team_id = None
+                
+                # Get user's current team for token tracking
+                if hasattr(current_user, 'teams') and current_user.teams:
+                    user_team_id = current_user.teams[0].id
+                elif hasattr(current_user, 'id'):
+                    user_team_id = f"personal_{current_user.id}"
+                
+                if user_team_id:
+                    tokens_used = result.get('tokens_used', 0)
+                    if tokens_used == 0:
+                        # Estimate tokens for template generation
+                        template_length = len(result.get('body_template', '')) + len(result.get('subject_template', ''))
+                        prompt_length = len(purpose) + len(custom_instructions)
+                        tokens_used = max(int((template_length + prompt_length) / 4), 150)
+                    
+                    log_token_usage(
+                        team_id=user_team_id,
+                        user_id=current_user.id,
+                        ai_model=result.get('model_used', 'qwen-4-turbo'),
+                        operation_type='template_generation',
+                        tokens_consumed=tokens_used,
+                        cost_usd=tokens_used * 0.00002,
+                        generation_time_ms=result.get('processing_time_ms', 3000),
+                        quality_score=8.5,
+                        prompt_length=len(purpose) + len(custom_instructions),
+                        response_length=len(result.get('body_template', ''))
+                    )
+                    logging.info(f"Token usage logged: {tokens_used} tokens for template generation")
+            except Exception as e:
+                logging.warning(f"Failed to log token usage for template generation: {str(e)}")
+
         return jsonify(result)
 
     except Exception as e:
         logging.error(f"Error generating template: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+
+
 
 @app.route('/api/delete-draft/<email_id>', methods=['DELETE'])
 @require_login

@@ -140,6 +140,36 @@ async def generate_email_reply(request: EmailGenerationRequest):
             custom_instructions=request.custom_instructions
         )
         
+        # Log token usage for FastAPI email generation
+        if result.get('success'):
+            try:
+                from ai_service import log_token_usage
+                # For FastAPI, we'll need to get user info from request headers or session
+                user_id = request.headers.get('x-user-id', 'fastapi_user')
+                team_id = request.headers.get('x-team-id', f'personal_{user_id}')
+                
+                tokens_used = result.get('tokens_used', 0)
+                if tokens_used == 0:
+                    # Estimate tokens based on content length
+                    total_chars = len(request.original_email) + len(request.context or '') + len(result.get('reply', ''))
+                    tokens_used = max(int(total_chars / 4), 120)
+                
+                log_token_usage(
+                    team_id=team_id,
+                    user_id=user_id,
+                    ai_model=result.get('model_used', request.model),
+                    operation_type='email_generation_api',
+                    tokens_consumed=tokens_used,
+                    cost_usd=tokens_used * 0.00002,
+                    generation_time_ms=result.get('generation_time_ms', 2500),
+                    quality_score=8.0,
+                    prompt_length=len(request.original_email),
+                    response_length=len(result.get('reply', ''))
+                )
+                logging.info(f"FastAPI token usage logged: {tokens_used} tokens for email generation")
+            except Exception as e:
+                logging.warning(f"Failed to log FastAPI token usage: {str(e)}")
+        
         return EmailGenerationResponse(**result)
         
     except Exception as e:
@@ -151,6 +181,32 @@ async def analyze_email(request: EmailAnalysisRequest):
     """Analyze email sentiment and characteristics"""
     try:
         result = ai_service.analyze_email_sentiment(request.email_content)
+        
+        # Log token usage for FastAPI analysis
+        if result.get('success'):
+            try:
+                from ai_service import log_token_usage
+                user_id = request.headers.get('x-user-id', 'fastapi_user') if hasattr(request, 'headers') else 'fastapi_user'
+                team_id = request.headers.get('x-team-id', f'personal_{user_id}') if hasattr(request, 'headers') else f'personal_{user_id}'
+                
+                tokens_used = max(int(len(request.email_content) / 4), 35)
+                
+                log_token_usage(
+                    team_id=team_id,
+                    user_id=user_id,
+                    ai_model='claude-4-sonnet',
+                    operation_type='sentiment_analysis_api',
+                    tokens_consumed=tokens_used,
+                    cost_usd=tokens_used * 0.00002,
+                    generation_time_ms=1000,
+                    quality_score=7.5,
+                    prompt_length=len(request.email_content),
+                    response_length=100
+                )
+                logging.info(f"FastAPI token usage logged: {tokens_used} tokens for sentiment analysis")
+            except Exception as e:
+                logging.warning(f"Failed to log FastAPI analysis token usage: {str(e)}")
+        
         return EmailAnalysisResponse(**result)
         
     except Exception as e:
@@ -283,6 +339,32 @@ async def generate_email_template(request: TemplateGenerationRequest):
         generation_time_ms = int((end_time - start_time).total_seconds() * 1000)
         
         if result.get('success'):
+            # Log token usage for template generation
+            try:
+                from ai_service import log_token_usage
+                user_id = request.headers.get('x-user-id', 'fastapi_user') if hasattr(request, 'headers') else 'fastapi_user'
+                team_id = request.headers.get('x-team-id', f'personal_{user_id}') if hasattr(request, 'headers') else f'personal_{user_id}'
+                
+                template_length = len(result.get('body_template', '')) + len(result.get('subject_template', ''))
+                prompt_length = len(request.purpose) + len(request.custom_instructions or '')
+                tokens_used = max(int((template_length + prompt_length) / 4), 180)
+                
+                log_token_usage(
+                    team_id=team_id,
+                    user_id=user_id,
+                    ai_model=result.get('model_used', 'qwen-4-turbo'),
+                    operation_type='template_generation_api',
+                    tokens_consumed=tokens_used,
+                    cost_usd=tokens_used * 0.00002,
+                    generation_time_ms=generation_time_ms,
+                    quality_score=8.5,
+                    prompt_length=prompt_length,
+                    response_length=template_length
+                )
+                logging.info(f"FastAPI token usage logged: {tokens_used} tokens for template generation")
+            except Exception as e:
+                logging.warning(f"Failed to log FastAPI template token usage: {str(e)}")
+            
             return TemplateGenerationResponse(
                 success=True,
                 template_name=result.get('template_name'),
