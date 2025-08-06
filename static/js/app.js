@@ -558,8 +558,11 @@ window.appUtils = {
     animateValue
 };
 
-// Make showToast available globally for use in templates
+// Make functions available globally for use in templates
 window.showToast = showToast;
+window.viewEmail = function(emailId) {
+    viewEmailDetails(emailId);
+};
 
 // Function to safely query the DOM
 function safeQuerySelector(selector) {
