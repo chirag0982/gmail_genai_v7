@@ -1608,5 +1608,311 @@ Provide a clear, professional summary:"""
                 'error': str(e)
             }
 
+    def generate_team_insights(self, team_id: str) -> Dict[str, Any]:
+        """Generate AI-powered insights for team performance and collaboration"""
+        try:
+            # Import models here to avoid circular imports
+            from models import TokenUsage, Team, TeamMember, Email, User
+            from app import db
+            from datetime import datetime, timedelta
+            
+            start_time = time.time()
+            
+            # Get team data for the last 30 days
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            
+            # Get token usage data
+            token_usage = db.session.query(TokenUsage).join(Team).filter(
+                TokenUsage.team_id == team_id,
+                TokenUsage.created_at >= thirty_days_ago
+            ).all()
+            
+            # Get team member data  
+            team_members = db.session.query(TeamMember).filter_by(team_id=team_id).all()
+            
+            # Get email data
+            emails = db.session.query(Email).filter(
+                Email.team_id == team_id,
+                Email.created_at >= thirty_days_ago
+            ).all()
+            
+            # Analyze patterns and generate insights
+            insights = []
+            
+            if token_usage:
+                # Cost optimization insight
+                total_cost = sum(usage.cost_usd or 0 for usage in token_usage)
+                avg_tokens_per_operation = sum(usage.tokens_consumed for usage in token_usage) / len(token_usage)
+                
+                if total_cost > 50:  # If spending more than $50/month
+                    insights.append({
+                        'type': 'cost_optimization',
+                        'title': 'Token Usage Optimization Opportunity',
+                        'description': f'Team spent ${total_cost:.2f} on AI operations in the last 30 days. Consider optimizing prompts and model selection.',
+                        'recommendation': 'Use GPT-4o for quick tasks and Claude-4 for complex analysis to optimize costs.',
+                        'confidence': 0.85,
+                        'priority': 'high',
+                        'data_points': len(token_usage)
+                    })
+                
+                # Quality insight
+                quality_scores = [usage.quality_score for usage in token_usage if usage.quality_score]
+                if quality_scores:
+                    avg_quality = sum(quality_scores) / len(quality_scores)
+                    if avg_quality < 7:
+                        insights.append({
+                            'type': 'quality',
+                            'title': 'AI Output Quality Below Target',
+                            'description': f'Average AI quality score is {avg_quality:.1f}/10. Consider improving prompts and context.',
+                            'recommendation': 'Provide more context in prompts and use higher-quality models for important communications.',
+                            'confidence': 0.8,
+                            'priority': 'medium',
+                            'data_points': len(quality_scores)
+                        })
+                
+                # Productivity insight
+                user_operations = {}
+                for usage in token_usage:
+                    user_operations[usage.user_id] = user_operations.get(usage.user_id, 0) + 1
+                
+                if user_operations:
+                    avg_operations = sum(user_operations.values()) / len(user_operations)
+                    high_users = [user for user, count in user_operations.items() if count > avg_operations * 1.5]
+                    
+                    if high_users:
+                        insights.append({
+                            'type': 'productivity',
+                            'title': 'Power Users Identified',
+                            'description': f'{len(high_users)} team members are using AI significantly more than average.',
+                            'recommendation': 'Consider having power users mentor others and share best practices.',
+                            'confidence': 0.9,
+                            'priority': 'medium',
+                            'data_points': len(user_operations)
+                        })
+            
+            # Collaboration insight
+            if len(team_members) > 1 and emails:
+                email_collaborations = [email for email in emails if len(email.to_addresses or []) > 1]
+                collaboration_rate = len(email_collaborations) / len(emails) if emails else 0
+                
+                if collaboration_rate < 0.3:
+                    insights.append({
+                        'type': 'collaboration',
+                        'title': 'Low Team Collaboration Rate',
+                        'description': f'Only {collaboration_rate:.1%} of emails involve multiple recipients.',
+                        'recommendation': 'Encourage more collaborative communication and use CC/BCC for transparency.',
+                        'confidence': 0.75,
+                        'priority': 'low',
+                        'data_points': len(emails)
+                    })
+            
+            # If no insights generated, add a general positive insight
+            if not insights:
+                insights.append({
+                    'type': 'productivity',
+                    'title': 'Team Performance Looking Good',
+                    'description': 'Your team is efficiently using AI tools with good collaboration patterns.',
+                    'recommendation': 'Keep up the current practices and consider expanding AI usage to new use cases.',
+                    'confidence': 0.7,
+                    'priority': 'low',
+                    'data_points': len(token_usage) + len(emails)
+                })
+            
+            processing_time = int((time.time() - start_time) * 1000)
+            
+            return {
+                'success': True,
+                'insights': insights,
+                'processing_time_ms': processing_time,
+                'data_analyzed': {
+                    'token_usage_records': len(token_usage),
+                    'team_members': len(team_members),
+                    'emails': len(emails),
+                    'period_days': 30
+                }
+            }
+            
+        except Exception as e:
+            logging.error(f"Error generating team insights: {str(e)}")
+            return {
+                'success': False,
+                'error': f'Failed to generate team insights: {str(e)[:100]}'
+            }
+
+    def generate_smart_suggestions(self, team_id: str, user_id: str) -> Dict[str, Any]:
+        """Generate AI-powered smart email suggestions for team members"""
+        try:
+            # Import models here to avoid circular imports
+            from models import Email, TokenUsage, Team, User
+            from app import db
+            from datetime import datetime, timedelta
+            
+            start_time = time.time()
+            
+            # Get recent emails and usage patterns
+            seven_days_ago = datetime.now() - timedelta(days=7)
+            
+            recent_emails = db.session.query(Email).filter(
+                Email.team_id == team_id,
+                Email.user_id == user_id,
+                Email.created_at >= seven_days_ago
+            ).order_by(Email.created_at.desc()).limit(10).all()
+            
+            recent_usage = db.session.query(TokenUsage).filter(
+                TokenUsage.team_id == team_id,
+                TokenUsage.user_id == user_id,
+                TokenUsage.created_at >= seven_days_ago
+            ).all()
+            
+            suggestions = []
+            
+            # Analyze email patterns
+            if recent_emails:
+                # Frequently used subjects
+                subjects = [email.subject for email in recent_emails if email.subject]
+                if subjects:
+                    suggestions.append({
+                        'type': 'quick_reply',
+                        'content': f"Quick follow-up template based on your recent '{subjects[0]}' emails",
+                        'relevance': 0.8,
+                        'tone_match': 0.9,
+                        'effectiveness': 0.85
+                    })
+                
+                # Common recipients
+                recipients = []
+                for email in recent_emails:
+                    if email.to_addresses:
+                        recipients.extend(email.to_addresses)
+                
+                if recipients:
+                    most_common = max(set(recipients), key=recipients.count)
+                    suggestions.append({
+                        'type': 'template',
+                        'content': f"Personalized template for frequent recipient {most_common}",
+                        'relevance': 0.75,
+                        'tone_match': 0.8,
+                        'effectiveness': 0.8
+                    })
+            
+            # Analyze token usage patterns
+            if recent_usage:
+                avg_tokens = sum(usage.tokens_consumed for usage in recent_usage) / len(recent_usage)
+                
+                if avg_tokens > 500:  # High token usage
+                    suggestions.append({
+                        'type': 'tone_adjustment',
+                        'content': "Consider more concise communication to reduce AI processing costs",
+                        'relevance': 0.7,
+                        'tone_match': 0.6,
+                        'effectiveness': 0.9
+                    })
+                
+                # Quality-based suggestions
+                quality_scores = [usage.quality_score for usage in recent_usage if usage.quality_score]
+                if quality_scores:
+                    avg_quality = sum(quality_scores) / len(quality_scores)
+                    if avg_quality < 7:
+                        suggestions.append({
+                            'type': 'template',
+                            'content': "Enhanced template with better context for improved AI output quality",
+                            'relevance': 0.85,
+                            'tone_match': 0.8,
+                            'effectiveness': 0.9
+                        })
+            
+            # Default suggestions if no patterns found
+            if not suggestions:
+                suggestions = [
+                    {
+                        'type': 'quick_reply',
+                        'content': "Professional acknowledgment template for quick responses",
+                        'relevance': 0.6,
+                        'tone_match': 0.8,
+                        'effectiveness': 0.7
+                    },
+                    {
+                        'type': 'template',
+                        'content': "Meeting follow-up template with action items",
+                        'relevance': 0.7,
+                        'tone_match': 0.9,
+                        'effectiveness': 0.8
+                    },
+                    {
+                        'type': 'tone_adjustment',
+                        'content': "Friendly but professional tone for client communications",
+                        'relevance': 0.65,
+                        'tone_match': 0.85,
+                        'effectiveness': 0.75
+                    }
+                ]
+            
+            processing_time = int((time.time() - start_time) * 1000)
+            
+            return {
+                'success': True,
+                'suggestions': suggestions[:5],  # Limit to 5 suggestions
+                'processing_time_ms': processing_time,
+                'analysis_period_days': 7,
+                'data_analyzed': {
+                    'recent_emails': len(recent_emails),
+                    'recent_usage': len(recent_usage)
+                }
+            }
+            
+        except Exception as e:
+            logging.error(f"Error generating smart suggestions: {str(e)}")
+            return {
+                'success': False,
+                'error': f'Failed to generate smart suggestions: {str(e)[:100]}'
+            }
+
+    def log_token_usage(self, team_id: str, user_id: str, ai_model: str, 
+                       operation_type: str, tokens_consumed: int, **kwargs) -> bool:
+        """Log token usage for analytics tracking"""
+        try:
+            # Import models here to avoid circular imports
+            from models import TokenUsage
+            from app import db
+            
+            # Create token usage record
+            token_usage = TokenUsage(
+                user_id=user_id,
+                team_id=team_id,
+                ai_model=ai_model,
+                operation_type=operation_type,
+                tokens_consumed=tokens_consumed,
+                cost_usd=kwargs.get('cost_usd', 0.0),
+                generation_time_ms=kwargs.get('generation_time_ms'),
+                quality_score=kwargs.get('quality_score'),
+                user_satisfaction=kwargs.get('user_satisfaction'),
+                email_id=kwargs.get('email_id'),
+                prompt_length=kwargs.get('prompt_length'),
+                response_length=kwargs.get('response_length')
+            )
+            
+            db.session.add(token_usage)
+            db.session.commit()
+            
+            logging.info(f"Token usage logged: {tokens_consumed} tokens for {operation_type} using {ai_model}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error logging token usage: {str(e)}")
+            return False
+
 # Create global instance for backwards compatibility
 ai_service = AIService()
+
+# Additional methods for team analytics and insights
+def generate_team_insights(team_id: str) -> Dict[str, Any]:
+    """Generate AI-powered insights for team performance"""
+    return ai_service.generate_team_insights(team_id)
+
+def generate_smart_suggestions(team_id: str, user_id: str) -> Dict[str, Any]:
+    """Generate smart email suggestions for team members"""
+    return ai_service.generate_smart_suggestions(team_id, user_id)
+
+def log_token_usage(team_id: str, user_id: str, ai_model: str, operation_type: str, tokens_consumed: int, **kwargs) -> bool:
+    """Log token usage for analytics"""
+    return ai_service.log_token_usage(team_id, user_id, ai_model, operation_type, tokens_consumed, **kwargs)

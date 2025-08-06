@@ -53,6 +53,24 @@
                                     <i data-feather="user-plus"></i> Invite Member
                                 </a>
                             </li>
+                            <li>
+                                <a class="dropdown-item" href="#" 
+                                   onclick="editTokenLimit('{{ team_data.team.id }}', '{{ team_data.team.monthly_token_limit }}')">
+                                    <i data-feather="settings"></i> Edit Token Limit
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" 
+                                   onclick="viewTeamAnalytics('{{ team_data.team.id }}')">
+                                    <i data-feather="bar-chart-2"></i> View Analytics
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" 
+                                   onclick="generateTeamInsights('{{ team_data.team.id }}')">
+                                    <i data-feather="zap"></i> Generate AI Insights
+                                </a>
+                            </li>
                             {% if team_data.role.value == 'admin' %}
                             <li><hr class="dropdown-divider"></li>
                             <li>
@@ -82,22 +100,28 @@
 
                 <!-- Team Stats -->
                 <div class="row g-2 mb-3">
-                    <div class="col-4">
+                    <div class="col-3">
                         <div class="text-center">
                             <div class="h5 mb-0 text-primary">{{ team_data.members|length }}</div>
                             <small class="text-muted">Members</small>
                         </div>
                     </div>
-                    <div class="col-4">
+                    <div class="col-3">
                         <div class="text-center">
                             <div class="h5 mb-0 text-success">{{ team_data.team.ai_model_access|length }}</div>
                             <small class="text-muted">AI Models</small>
                         </div>
                     </div>
-                    <div class="col-4">
+                    <div class="col-3">
                         <div class="text-center">
-                            <div class="h5 mb-0 text-warning">{{ (team_data.team.monthly_token_limit / 1000)|round(1) }}K</div>
+                            <div class="h5 mb-0 text-warning" id="tokenLimit{{ team_data.team.id }}">{{ (team_data.team.monthly_token_limit / 1000)|round(1) }}K</div>
                             <small class="text-muted">Token Limit</small>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="text-center">
+                            <div class="h5 mb-0 text-info" id="tokensUsed{{ team_data.team.id }}">--</div>
+                            <small class="text-muted">Used This Month</small>
                         </div>
                     </div>
                 </div>
@@ -226,15 +250,23 @@
                     <small class="text-muted">
                         Created {{ team_data.team.created_at.strftime('%b %d, %Y') }}
                     </small>
-                    <div class="d-flex gap-1">
+                    <div class="d-flex gap-1 flex-wrap">
                         <a href="{{ url_for('compose') }}?team={{ team_data.team.id }}" 
                            class="btn btn-sm btn-outline-primary">
                             <i data-feather="edit"></i> Compose
                         </a>
-                        <a href="{{ url_for('analytics') }}?team={{ team_data.team.id }}" 
-                           class="btn btn-sm btn-outline-info">
+                        <button class="btn btn-sm btn-outline-info" 
+                                onclick="viewTeamAnalytics('{{ team_data.team.id }}')">
                             <i data-feather="bar-chart-2"></i> Analytics
-                        </a>
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" 
+                                onclick="showSmartSuggestions('{{ team_data.team.id }}')">
+                            <i data-feather="zap"></i> AI Coach
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" 
+                                onclick="showCollaborationPatterns('{{ team_data.team.id }}')">
+                            <i data-feather="users"></i> Patterns
+                        </button>
                     </div>
                 </div>
             </div>

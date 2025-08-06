@@ -3,7 +3,8 @@ from flask_login import current_user
 from app import app, db
 from local_auth import require_login, local_auth
 from models import (User, Team, TeamMember, TeamInvitation, Email, EmailTemplate, EmailAnalytics,
-                   EmailStatus, UserRole, AIModel, EmailTone)
+                   EmailStatus, UserRole, AIModel, EmailTone, TokenUsage, TeamAIInsights, 
+                   TeamCollaborationPattern, SmartEmailSuggestion)
 from ai_service import ai_service
 from email_service import email_service
 import json
@@ -1523,6 +1524,326 @@ def delete_draft(email_id):
 
     except Exception as e:
         logging.error(f"Error deleting draft: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ============================================================================
+# TEAM ANALYTICS AND TOKEN MANAGEMENT APIs
+# ============================================================================
+
+@app.route('/api/team-analytics/<team_id>')
+@require_login
+def get_team_analytics(team_id):
+    """Get comprehensive team analytics including token usage and AI insights"""
+    try:
+        # Verify user has access to team
+        team_member = TeamMember.query.filter_by(
+            team_id=team_id,
+            user_id=current_user.id
+        ).first()
+        
+        if not team_member:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+            
+        # Get date range (last 30 days by default)
+        days = request.args.get('days', 30, type=int)
+        start_date = datetime.now() - timedelta(days=days)
+        
+        # Get token usage by member
+        token_usage = db.session.query(
+            TokenUsage.user_id,
+            User.first_name,
+            User.email,
+            db.func.sum(TokenUsage.tokens_consumed).label('total_tokens'),
+            db.func.sum(TokenUsage.cost_usd).label('total_cost'),
+            db.func.count(TokenUsage.id).label('operations_count'),
+            db.func.avg(TokenUsage.quality_score).label('avg_quality'),
+            db.func.avg(TokenUsage.user_satisfaction).label('avg_satisfaction')
+        ).join(User).filter(
+            TokenUsage.team_id == team_id,
+            TokenUsage.created_at >= start_date
+        ).group_by(TokenUsage.user_id, User.first_name, User.email).all()
+        
+        # Get model usage statistics
+        model_usage = db.session.query(
+            TokenUsage.ai_model,
+            db.func.sum(TokenUsage.tokens_consumed).label('total_tokens'),
+            db.func.count(TokenUsage.id).label('usage_count'),
+            db.func.avg(TokenUsage.generation_time_ms).label('avg_time')
+        ).filter(
+            TokenUsage.team_id == team_id,
+            TokenUsage.created_at >= start_date
+        ).group_by(TokenUsage.ai_model).all()
+        
+        # Get team insights
+        team_insights = TeamAIInsights.query.filter_by(team_id=team_id).filter(
+            db.or_(
+                TeamAIInsights.expires_at.is_(None),
+                TeamAIInsights.expires_at > datetime.now()
+            )
+        ).order_by(TeamAIInsights.priority_level.desc()).limit(10).all()
+        
+        # Get collaboration patterns
+        collaboration_patterns = TeamCollaborationPattern.query.filter_by(
+            team_id=team_id
+        ).order_by(TeamCollaborationPattern.frequency_score.desc()).limit(5).all()
+        
+        # Calculate team totals
+        team_total_tokens = sum(usage.total_tokens or 0 for usage in token_usage)
+        team_total_cost = sum(usage.total_cost or 0 for usage in token_usage)
+        
+        return jsonify({
+            'success': True,
+            'analytics': {
+                'period_days': days,
+                'team_totals': {
+                    'total_tokens': team_total_tokens,
+                    'total_cost': round(team_total_cost, 4),
+                    'total_operations': sum(usage.operations_count or 0 for usage in token_usage)
+                },
+                'member_usage': [{
+                    'user_id': usage.user_id,
+                    'name': usage.first_name or usage.email.split('@')[0],
+                    'email': usage.email,
+                    'total_tokens': usage.total_tokens or 0,
+                    'total_cost': round(usage.total_cost or 0, 4),
+                    'operations_count': usage.operations_count or 0,
+                    'avg_quality': round(usage.avg_quality or 0, 2),
+                    'avg_satisfaction': round(usage.avg_satisfaction or 0, 2)
+                } for usage in token_usage],
+                'model_usage': [{
+                    'model': usage.ai_model,
+                    'total_tokens': usage.total_tokens or 0,
+                    'usage_count': usage.usage_count or 0,
+                    'avg_time_ms': round(usage.avg_time or 0, 1)
+                } for usage in model_usage],
+                'insights': [{
+                    'id': insight.id,
+                    'type': insight.insight_type,
+                    'title': insight.insight_title,
+                    'description': insight.insight_description,
+                    'recommendation': insight.recommendation,
+                    'confidence': insight.confidence_score,
+                    'priority': insight.priority_level,
+                    'is_acknowledged': insight.is_acknowledged,
+                    'generated_at': insight.generated_at.isoformat()
+                } for insight in team_insights],
+                'collaboration_patterns': [{
+                    'name': pattern.pattern_name,
+                    'description': pattern.pattern_description,
+                    'frequency': pattern.frequency_score,
+                    'coaching_tip': pattern.ai_coaching_tip,
+                    'improvement_potential': pattern.improvement_potential,
+                    'quality': pattern.collaboration_quality
+                } for pattern in collaboration_patterns]
+            }
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting team analytics: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/update-token-limit', methods=['POST'])
+@require_login
+def update_token_limit():
+    """Update team token limit (admin/manager only)"""
+    try:
+        data = request.get_json()
+        team_id = data.get('team_id')
+        new_limit = data.get('token_limit')
+        
+        if not team_id or not new_limit:
+            return jsonify({'success': False, 'error': 'Team ID and token limit required'}), 400
+            
+        # Verify user has admin/manager access
+        team_member = TeamMember.query.filter_by(
+            team_id=team_id,
+            user_id=current_user.id
+        ).first()
+        
+        if not team_member or team_member.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+            return jsonify({'success': False, 'error': 'Admin or Manager access required'}), 403
+            
+        # Validate new limit
+        try:
+            new_limit = int(new_limit)
+            if new_limit < 1000 or new_limit > 10000000:  # 1K to 10M tokens
+                return jsonify({'success': False, 'error': 'Token limit must be between 1,000 and 10,000,000'}), 400
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid token limit value'}), 400
+            
+        # Update team limit
+        team = Team.query.get(team_id)
+        if not team:
+            return jsonify({'success': False, 'error': 'Team not found'}), 404
+            
+        old_limit = team.monthly_token_limit
+        team.monthly_token_limit = new_limit
+        db.session.commit()
+        
+        # Log the change
+        logging.info(f"Token limit updated for team {team_id} by user {current_user.id}: {old_limit} -> {new_limit}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Token limit updated to {new_limit:,} tokens',
+            'old_limit': old_limit,
+            'new_limit': new_limit
+        })
+        
+    except Exception as e:
+        logging.error(f"Error updating token limit: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/log-token-usage', methods=['POST'])
+@require_login  
+def log_token_usage():
+    """Log token usage for analytics (called by AI service)"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['team_id', 'ai_model', 'operation_type', 'tokens_consumed']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'{field} is required'}), 400
+        
+        # Create token usage record
+        token_usage = TokenUsage(
+            user_id=current_user.id,
+            team_id=data['team_id'],
+            ai_model=data['ai_model'],
+            operation_type=data['operation_type'],
+            tokens_consumed=data['tokens_consumed'],
+            cost_usd=data.get('cost_usd', 0.0),
+            generation_time_ms=data.get('generation_time_ms'),
+            quality_score=data.get('quality_score'),
+            user_satisfaction=data.get('user_satisfaction'),
+            email_id=data.get('email_id'),
+            prompt_length=data.get('prompt_length'),
+            response_length=data.get('response_length')
+        )
+        
+        db.session.add(token_usage)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'usage_id': token_usage.id})
+        
+    except Exception as e:
+        logging.error(f"Error logging token usage: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/generate-team-insights', methods=['POST'])
+@require_login
+def generate_team_insights():
+    """Generate AI insights for team performance"""
+    try:
+        data = request.get_json()
+        team_id = data.get('team_id')
+        
+        if not team_id:
+            return jsonify({'success': False, 'error': 'Team ID required'}), 400
+            
+        # Verify access
+        team_member = TeamMember.query.filter_by(
+            team_id=team_id,
+            user_id=current_user.id
+        ).first()
+        
+        if not team_member or team_member.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+            return jsonify({'success': False, 'error': 'Admin or Manager access required'}), 403
+            
+        # Generate insights using AI service
+        insights_result = ai_service.generate_team_insights(team_id)
+        
+        if insights_result.get('success'):
+            # Store insights in database
+            for insight_data in insights_result.get('insights', []):
+                insight = TeamAIInsights(
+                    team_id=team_id,
+                    insight_type=insight_data['type'],
+                    insight_title=insight_data['title'],
+                    insight_description=insight_data['description'],
+                    recommendation=insight_data.get('recommendation'),
+                    confidence_score=insight_data.get('confidence', 0.0),
+                    priority_level=insight_data.get('priority', 'medium'),
+                    data_points_analyzed=insight_data.get('data_points', 0),
+                    expires_at=datetime.now() + timedelta(days=7)  # Insights expire in 1 week
+                )
+                db.session.add(insight)
+            
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'{len(insights_result.get("insights", []))} insights generated',
+                'insights_count': len(insights_result.get('insights', []))
+            })
+        else:
+            return jsonify({'success': False, 'error': insights_result.get('error', 'Failed to generate insights')}), 500
+            
+    except Exception as e:
+        logging.error(f"Error generating team insights: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/smart-suggestions/<team_id>')
+@require_login
+def get_smart_suggestions(team_id):
+    """Get AI-powered smart suggestions for the team"""
+    try:
+        # Verify team access
+        team_member = TeamMember.query.filter_by(
+            team_id=team_id,
+            user_id=current_user.id
+        ).first()
+        
+        if not team_member:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+            
+        # Get recent suggestions for this user
+        suggestions = SmartEmailSuggestion.query.filter_by(
+            team_id=team_id,
+            user_id=current_user.id
+        ).order_by(SmartEmailSuggestion.created_at.desc()).limit(5).all()
+        
+        # Generate new suggestions if none exist
+        if not suggestions:
+            # Use AI service to generate contextual suggestions
+            suggestion_result = ai_service.generate_smart_suggestions(
+                team_id=team_id,
+                user_id=current_user.id
+            )
+            
+            if suggestion_result.get('success'):
+                for suggestion_data in suggestion_result.get('suggestions', []):
+                    suggestion = SmartEmailSuggestion(
+                        team_id=team_id,
+                        user_id=current_user.id,
+                        suggestion_type=suggestion_data['type'],
+                        suggested_content=suggestion_data['content'],
+                        relevance_score=suggestion_data.get('relevance', 0.0),
+                        tone_match_score=suggestion_data.get('tone_match', 0.0),
+                        predicted_effectiveness=suggestion_data.get('effectiveness', 0.0)
+                    )
+                    db.session.add(suggestion)
+                    suggestions.append(suggestion)
+                
+                db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'suggestions': [{
+                'id': s.id,
+                'type': s.suggestion_type,
+                'content': s.suggested_content,
+                'relevance': s.relevance_score,
+                'tone_match': s.tone_match_score,
+                'effectiveness': s.predicted_effectiveness,
+                'created_at': s.created_at.isoformat()
+            } for s in suggestions]
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting smart suggestions: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # Error handlers

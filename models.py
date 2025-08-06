@@ -254,3 +254,119 @@ class CollaborationSession(db.Model):
     cursor_position = db.Column(db.Integer, default=0)
     
     created_at = db.Column(db.DateTime, default=datetime.now)
+
+# Token usage tracking per team member
+class TokenUsage(db.Model):
+    __tablename__ = 'token_usage'
+    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
+    team_id = db.Column(db.String, db.ForeignKey('teams.id'), nullable=False)
+    
+    # Usage details
+    ai_model = db.Column(db.String(50), nullable=False)  # Which model was used
+    operation_type = db.Column(db.String(30), nullable=False)  # 'email_generation', 'analysis', 'summarization'
+    tokens_consumed = db.Column(db.Integer, nullable=False)
+    cost_usd = db.Column(db.Float, default=0.0)
+    
+    # Performance metrics
+    generation_time_ms = db.Column(db.Integer)
+    quality_score = db.Column(db.Float)  # AI-assessed quality (1-10)
+    user_satisfaction = db.Column(db.Integer)  # User rating 1-5 stars
+    
+    # Context
+    email_id = db.Column(db.String, db.ForeignKey('emails.id'), nullable=True)
+    prompt_length = db.Column(db.Integer)
+    response_length = db.Column(db.Integer)
+    
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    
+    # Relationships
+    user = db.relationship('User')
+    team = db.relationship('Team')
+    email = db.relationship('Email')
+
+# AI-powered team insights and recommendations  
+class TeamAIInsights(db.Model):
+    __tablename__ = 'team_ai_insights'
+    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    team_id = db.Column(db.String, db.ForeignKey('teams.id'), nullable=False)
+    
+    # Insight types: 'productivity', 'collaboration', 'cost_optimization', 'quality'
+    insight_type = db.Column(db.String(30), nullable=False)
+    insight_title = db.Column(db.String(200), nullable=False)
+    insight_description = db.Column(db.Text, nullable=False)
+    
+    # AI recommendations
+    recommendation = db.Column(db.Text)
+    confidence_score = db.Column(db.Float, default=0.0)  # 0-1 confidence
+    priority_level = db.Column(db.String(10), default='medium')  # low, medium, high
+    
+    # Tracking
+    is_acknowledged = db.Column(db.Boolean, default=False)
+    acknowledged_by_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=True)
+    acknowledged_at = db.Column(db.DateTime, nullable=True)
+    
+    # Metadata
+    data_points_analyzed = db.Column(db.Integer, default=0)
+    generated_at = db.Column(db.DateTime, default=datetime.now)
+    expires_at = db.Column(db.DateTime, nullable=True)  # Some insights expire
+    
+    # Relationships
+    team = db.relationship('Team')
+    acknowledged_by = db.relationship('User')
+
+# Team collaboration patterns and AI coaching
+class TeamCollaborationPattern(db.Model):
+    __tablename__ = 'team_collaboration_patterns'
+    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    team_id = db.Column(db.String, db.ForeignKey('teams.id'), nullable=False)
+    
+    # Pattern analysis
+    pattern_name = db.Column(db.String(100), nullable=False)
+    pattern_description = db.Column(db.Text)
+    frequency_score = db.Column(db.Float, default=0.0)  # How often this pattern occurs
+    
+    # AI coaching suggestions
+    ai_coaching_tip = db.Column(db.Text)
+    improvement_potential = db.Column(db.String(20))  # 'low', 'medium', 'high'
+    
+    # Member involvement
+    primary_participants = db.Column(db.JSON)  # List of user IDs most involved
+    collaboration_quality = db.Column(db.Float, default=0.0)  # 1-10 scale
+    
+    # Time tracking
+    first_observed = db.Column(db.DateTime, default=datetime.now)
+    last_observed = db.Column(db.DateTime, default=datetime.now)
+    analysis_period_days = db.Column(db.Integer, default=7)
+    
+    # Relationships  
+    team = db.relationship('Team')
+
+# Smart email suggestions and auto-responses
+class SmartEmailSuggestion(db.Model):
+    __tablename__ = 'smart_email_suggestions'
+    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    team_id = db.Column(db.String, db.ForeignKey('teams.id'), nullable=False)
+    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
+    
+    # Suggestion context
+    trigger_email_content = db.Column(db.Text)  # Original email that triggered suggestion
+    suggestion_type = db.Column(db.String(30))  # 'quick_reply', 'template', 'tone_adjustment'
+    suggested_content = db.Column(db.Text, nullable=False)
+    
+    # AI analysis
+    relevance_score = db.Column(db.Float, default=0.0)  # How relevant (0-1)
+    tone_match_score = db.Column(db.Float, default=0.0)  # How well it matches user's style
+    predicted_effectiveness = db.Column(db.Float, default=0.0)  # Predicted success rate
+    
+    # User interaction
+    was_used = db.Column(db.Boolean, default=False)
+    user_rating = db.Column(db.Integer, nullable=True)  # 1-5 stars if used
+    modified_before_use = db.Column(db.Boolean, default=False)
+    
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    used_at = db.Column(db.DateTime, nullable=True)
+    
+    # Relationships
+    team = db.relationship('Team')
+    user = db.relationship('User')
