@@ -554,15 +554,30 @@ def invite_member():
         if existing_membership:
             return jsonify({'success': False, 'error': 'User is already a member of this team'}), 400
         
-        # Check if invitation already exists
+        # Check if invitation already exists (any status)
         existing_invitation = TeamInvitation.query.filter_by(
             team_id=team_id,
-            invited_user_id=invited_user.id,
-            status='pending'
+            invited_user_id=invited_user.id
         ).first()
         
         if existing_invitation:
-            return jsonify({'success': False, 'error': 'Invitation already sent to this user'}), 400
+            if existing_invitation.status == 'pending':
+                return jsonify({'success': False, 'error': 'Invitation already sent to this user'}), 400
+            elif existing_invitation.status == 'declined':
+                # Update existing declined invitation to pending
+                existing_invitation.status = 'pending'
+                existing_invitation.invited_by_id = current_user.id
+                existing_invitation.role = UserRole(role)
+                existing_invitation.message = message
+                existing_invitation.created_at = datetime.now()
+                existing_invitation.responded_at = None
+                db.session.commit()
+                return jsonify({
+                    'success': True,
+                    'message': f'Re-invitation sent to {invited_user.first_name or email}'
+                })
+            else:  # accepted status
+                return jsonify({'success': False, 'error': 'User has already accepted an invitation to this team'}), 400
         
         # Create invitation
         invitation = TeamInvitation(
