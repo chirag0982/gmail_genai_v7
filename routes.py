@@ -576,8 +576,23 @@ def invite_member():
                     'success': True,
                     'message': f'Re-invitation sent to {invited_user.first_name or email}'
                 })
-            else:  # accepted status
-                return jsonify({'success': False, 'error': 'User has already accepted an invitation to this team'}), 400
+            else:  # accepted status - check if they're still a member
+                # If they're not currently a member, they were removed after accepting
+                if not existing_membership:
+                    # Update existing accepted invitation to pending for re-invitation
+                    existing_invitation.status = 'pending'
+                    existing_invitation.invited_by_id = current_user.id
+                    existing_invitation.role = UserRole(role)
+                    existing_invitation.message = message
+                    existing_invitation.created_at = datetime.now()
+                    existing_invitation.responded_at = None
+                    db.session.commit()
+                    return jsonify({
+                        'success': True,
+                        'message': f'Re-invitation sent to {invited_user.first_name or email}'
+                    })
+                else:
+                    return jsonify({'success': False, 'error': 'User is already a member of this team'}), 400
         
         # Create invitation
         invitation = TeamInvitation(
@@ -696,6 +711,52 @@ def remove_member():
         
     except Exception as e:
         logging.error(f"Error removing member: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/leave-team', methods=['POST'])
+@require_login
+def leave_team():
+    """Allow a user to leave a team"""
+    try:
+        data = request.get_json()
+        team_id = data.get('team_id')
+        
+        if not team_id:
+            return jsonify({'success': False, 'error': 'Team ID is required'}), 400
+        
+        # Get user's membership
+        membership = TeamMember.query.filter_by(
+            user_id=current_user.id,
+            team_id=team_id
+        ).first()
+        
+        if not membership:
+            return jsonify({'success': False, 'error': 'You are not a member of this team'}), 404
+        
+        # Check if user is the only admin
+        if membership.role == UserRole.ADMIN:
+            admin_count = TeamMember.query.filter_by(
+                team_id=team_id,
+                role=UserRole.ADMIN
+            ).count()
+            
+            if admin_count == 1:
+                return jsonify({
+                    'success': False, 
+                    'error': 'You cannot leave the team as you are the only admin. Please assign another admin first or delete the team.'
+                }), 400
+        
+        # Remove membership
+        db.session.delete(membership)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'You have successfully left the team'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error leaving team: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/get-invitations')

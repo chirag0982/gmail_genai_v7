@@ -564,6 +564,40 @@ window.viewEmail = function(emailId) {
     viewEmailDetails(emailId);
 };
 
+// Team management functions
+window.leaveTeam = async function(teamId, teamName) {
+    if (!confirm(`Are you sure you want to leave the team "${teamName}"? This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/leave-team', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                team_id: teamId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            // Reload the page to update the team list
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showToast(result.error || 'Failed to leave team', 'error');
+        }
+    } catch (error) {
+        console.error('Error leaving team:', error);
+        showToast('Failed to leave team. Please try again.', 'error');
+    }
+};
+
 // Function to safely query the DOM
 function safeQuerySelector(selector) {
         if (!selector || selector === '#') return null;

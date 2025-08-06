@@ -39,6 +39,9 @@ Date: August 5, 2025
 - ✓ Fixed team invitation duplicate key error (UniqueViolation on uq_team_invitation)
 - ✓ Enhanced invitation logic to handle existing invitations properly
 - ✓ Added support for re-inviting previously declined users
+- ✓ Fixed edge case: re-invite users who accepted invitations but were later removed
+- ✓ Added "Leave Team" functionality for all team members
+- ✓ Implemented proper authorization checks for leaving teams (solo admins cannot leave)
 - ✓ Fixed LangChain prompt template escaping issues for proper JSON generation
 - ✓ Successfully tested template generation with OpenRouter Qwen model integration
 - ✓ **FIXED TEAM INVITATION ACCEPTANCE/DECLINE ISSUE**: JavaScript function scope resolved

@@ -34,13 +34,13 @@
                         </small>
                     </div>
 
-                    {% if team_data.role.value in ['admin', 'manager'] %}
                     <div class="dropdown">
                         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" 
                                 data-bs-toggle="dropdown">
                             <i data-feather="settings"></i>
                         </button>
                         <ul class="dropdown-menu">
+                            {% if team_data.role.value in ['admin', 'manager'] %}
                             <li>
                                 <a class="dropdown-item" href="#" 
                                    onclick="editTeam('{{ team_data.team.id }}', '{{ team_data.team.name }}', '{{ team_data.team.description or '' }}')">
@@ -62,9 +62,16 @@
                                 </a>
                             </li>
                             {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            {% endif %}
+                            <li>
+                                <a class="dropdown-item text-warning" href="#" 
+                                   onclick="leaveTeam('{{ team_data.team.id }}', '{{ team_data.team.name }}')">
+                                    <i data-feather="log-out"></i> Leave Team
+                                </a>
+                            </li>
                         </ul>
                     </div>
-                    {% endif %}
                 </div>
             </div>
 
